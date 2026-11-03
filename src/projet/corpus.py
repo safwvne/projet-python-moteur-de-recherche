@@ -1,12 +1,10 @@
 from __future__ import annotations
-
 import json
 from pathlib import Path
-
 import pandas as pd
-
 from .author import Author
 from .document import ArxivDocument, Document, DocumentFactory, RedditDocument
+import re
 
 DATAFRAME_COLUMNS: list[str] = [
     "identifier",
@@ -38,6 +36,7 @@ class Corpus:
         self.__documents: dict[int, Document] = {}
         self.__document_id: int = 0
         self.__authors: dict[str, Author] = {}
+        self.__concatenated_text_cache: str | None = None
 
     @classmethod
     def get_instance(cls, name: str = "Search corpus") -> Corpus:
@@ -66,6 +65,7 @@ class Corpus:
         document_id: int = self.__document_id
         self.__documents[document_id] = document
         self.__add_document_to_authors(document_id, document)
+        self.__concatenated_text_cache = None
         return document_id
 
     def get_document_count(self) -> int:
@@ -92,12 +92,16 @@ class Corpus:
         ]
         for document_id in identifiers:
             del self.__documents[document_id]
+        self.__concatenated_text_cache = None
         self.__rebuild_authors()
         return len(identifiers)
 
     def get_concatenated_text(self) -> str:
-        texts: list[str] = [document.text for document in self.__documents.values()]
-        return " ".join(texts)
+        if self.__concatenated_text_cache is None:
+            self.__concatenated_text_cache = " ".join(
+                doc.text for doc in self.__documents.values()
+            )
+        return self.__concatenated_text_cache
 
     def get_documents_by_date(self, count: int) -> list[Document]:
         if count < 0:
@@ -140,6 +144,7 @@ class Corpus:
         self.__documents = {}
         self.__authors = {}
         self.__document_id = 0
+        self.__concatenated_text_cache = None
         for _, row in dataframe.iterrows():
             document: Document = self.__create_document_from_row(row)
             document_id: int = int(row["identifier"])
@@ -216,3 +221,18 @@ class Corpus:
             f"Corpus(name={self.name!r}, documents={len(self.__documents)}, "
             f"authors={len(self.__authors)})"
         )
+
+    def search(self, keyword: str, context_size: int = 60) -> list[str]:
+        keyword = keyword.strip()
+        if not keyword:
+            return []
+        text = self.get_concatenated_text()
+        pattern = rf"\b{re.escape(keyword)}\b"
+        return [
+            text[ max(0, match.start() - context_size): match.end() + context_size]
+            for match in re.finditer(
+                pattern,
+                text,
+                flags=re.IGNORECASE
+            )
+        ]
