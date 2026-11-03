@@ -236,3 +236,40 @@ class Corpus:
                 flags=re.IGNORECASE
             )
         ]
+
+
+    def concorde(self, expression: str, context_size: int = 30) -> pd.DataFrame:
+        columns: list[str] = [
+            "contexte gauche",
+            "motif trouvé",
+            "contexte droit"
+        ]
+        if context_size < 0:
+            raise ValueError(
+                "La taille du contexte ne peut pas être négative."
+            )
+        expression = expression.strip()
+        if not expression:
+            return pd.DataFrame(columns=columns)
+        text: str = self.get_concatenated_text()
+        pattern: str = rf"(?<!\w){re.escape(expression)}(?!\w)"
+        results: list[dict[str, str]] = []
+        for match in re.finditer(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        ):
+            start: int = match.start()
+            end: int = match.end()
+            left_context: str = text[
+                max(0, start - context_size):start
+            ]
+            right_context: str = text[
+                end:min(len(text), end + context_size)
+            ]
+            results.append({
+                "contexte gauche": left_context,
+                "motif trouvé": match.group(0),
+                "contexte droit": right_context
+            })
+        return pd.DataFrame(results, columns=columns)
