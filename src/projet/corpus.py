@@ -291,22 +291,29 @@ class Corpus:
     
     def calculer_frequences(self) -> pd.DataFrame:
         occurrences: Counter[str] = Counter()
+        document_frequency: Counter[str] = Counter()
         for document in self.__documents.values():
             texte: str = nettoyer_texte(document.text)
             mots: list[str] = texte.split()
             occurrences.update(mots)
+            document_frequency.update(set(mots))
         freq: pd.DataFrame = pd.DataFrame(
             [
                 {
                     "mot": mot,
                     "identifiant": identifiant,
-                    "occurrences": occurrences[mot]
+                    "occurrences": occurrences[mot],
+                    "document_frequency": document_frequency[mot]
                 }
                 for identifiant, mot in enumerate(
                     sorted(occurrences)
                 )
             ],
-            columns=["mot", "identifiant", "occurrences"]
+            columns=[
+                "mot",
+                "identifiant",
+                "occurrences",
+                "document_frequency"
+            ]
         )
         return freq
-

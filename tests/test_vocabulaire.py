@@ -92,5 +92,52 @@ def test_frequences_corpus_vide(corpus_vierge):
     assert list(freq.columns) == [
         "mot",
         "identifiant",
-        "occurrences"
+        "occurrences",
+        "document_frequency"
     ]
+
+def test_document_frequency(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus treatment"
+    )
+    freq = corpus_vierge.calculer_frequences()
+    stats = freq.set_index("mot")
+    assert stats.loc["virus", "occurrences"] == 3
+    assert stats.loc["virus", "document_frequency"] == 2
+    assert stats.loc["covid", "document_frequency"] == 2
+    assert stats.loc["vaccine", "document_frequency"] == 1
+    assert stats.loc["treatment", "document_frequency"] == 1
+
+def test_document_frequency_repetitions(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "virus virus virus virus"
+    )
+    freq = corpus_vierge.calculer_frequences()
+    stats = freq.set_index("mot")
+    assert stats.loc["virus", "occurrences"] == 4
+    assert stats.loc["virus", "document_frequency"] == 1
+
+def test_document_frequency_coherence(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus vaccine"
+    )
+    freq = corpus_vierge.calculer_frequences()
+    nombre_documents = corpus_vierge.get_document_count()
+    assert (freq["document_frequency"] <= nombre_documents).all()
+    assert (freq["document_frequency"] <= freq["occurrences"]).all()
+    assert len(freq) == len(corpus_vierge.construire_vocabulaire())
