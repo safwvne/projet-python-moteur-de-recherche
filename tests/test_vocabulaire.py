@@ -257,3 +257,85 @@ def test_matrice_tf_identifiants_documents(corpus_vierge):
         [0, 2],
         [1, 0]
     ]
+    
+def test_statistiques_calculees_depuis_matrice(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus treatment"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.vocab["virus"] == {
+        "id": 3,
+        "total_occurrences": 3,
+        "document_frequency": 2
+    }
+    assert moteur.vocab["covid"]["total_occurrences"] == 2
+    assert moteur.vocab["covid"]["document_frequency"] == 2
+    assert moteur.vocab["vaccine"]["total_occurrences"] == 1
+    assert moteur.vocab["vaccine"]["document_frequency"] == 1
+
+def test_statistiques_coherentes_avec_corpus(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "COVID-19 virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "vaccine virus"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    freq = corpus_vierge.calculer_frequences()
+    freq = freq.set_index("mot")
+    for mot, informations in moteur.vocab.items():
+        assert informations["total_occurrences"] == (
+            freq.loc[mot, "occurrences"]
+        )
+        assert informations["document_frequency"] == (
+            freq.loc[mot, "document_frequency"]
+        )
+
+def test_recalcul_statistiques_apres_modification_matrice(corpus_vierge):
+    ajouter_document(corpus_vierge, "virus virus")
+    ajouter_document(corpus_vierge, "virus vaccine")
+    moteur = SearchEngine(corpus_vierge)
+    colonne_virus = moteur.vocab["virus"]["id"]
+    moteur.mat_TF[0, colonne_virus] = 5
+    moteur._mettre_a_jour_statistiques()
+    assert moteur.vocab["virus"]["total_occurrences"] == 6
+    assert moteur.vocab["virus"]["document_frequency"] == 2
+
+def test_optimisation_un_nettoyage_par_document(corpus_vierge, monkeypatch):
+    import projet.search_engine as module_moteur
+    ajouter_document(corpus_vierge, "covid virus")
+    ajouter_document(corpus_vierge, "vaccine virus")
+    nettoyeur_original = module_moteur.nettoyer_texte
+    appels: list[str] = []
+    def nettoyer_espion(texte: str) -> str:
+        appels.append(texte)
+        return nettoyeur_original(texte)
+    monkeypatch.setattr(
+        module_moteur,
+        "nettoyer_texte",
+        nettoyer_espion
+    )
+    def calcul_interdit():
+        raise AssertionError(
+            "Le moteur ne doit pas appeler calculer_frequences"
+        )
+    monkeypatch.setattr(
+        corpus_vierge,
+        "calculer_frequences",
+        calcul_interdit
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert len(appels) == 2
+    assert moteur.mat_TF.shape == (2, 3)
+    assert moteur.vocab["virus"]["document_frequency"] == 2

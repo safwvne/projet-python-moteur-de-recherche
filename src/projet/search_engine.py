@@ -1,58 +1,82 @@
 from __future__ import annotations
-from .corpus import Corpus
 from collections import Counter
 from scipy.sparse import csr_matrix
+from .corpus import Corpus
 from .text_processing import nettoyer_texte
 
 class SearchEngine:
     def __init__(self, corpus: Corpus) -> None:
         self.corpus: Corpus = corpus
+        documents = self.corpus.documents
+        self.document_ids: list[int] = sorted(documents)
+        compteurs_documents: list[Counter[str]] = []
+        mots_uniques: set[str] = set()
+        for document_id in self.document_ids:
+            document = documents[document_id]
+            texte = nettoyer_texte(document.text)
+            mots = texte.split()
+            compteur = Counter(mots)
+            compteurs_documents.append(compteur)
+            mots_uniques.update(compteur)
         self.vocab: dict[str, dict[str, int]] = (
-            self._construire_vocabulaire()
-        )
-        self.document_ids: list[int] = sorted(
-            self.corpus.documents.keys()
+            self._construire_vocabulaire(mots_uniques)
         )
         self.mat_TF: csr_matrix = (
-            self._construire_matrice_tf()
+            self._construire_matrice_tf(
+                compteurs_documents
+            )
         )
+        self._mettre_a_jour_statistiques()
 
-    def _construire_vocabulaire(self) -> dict[str, dict[str, int]]:
-        freq = self.corpus.calculer_frequences()
-        vocabulaire: dict[str, dict[str, int]] = {}
-        for ligne in freq.itertuples(index=False):
-            mot: str = str(ligne.mot)
-            vocabulaire[mot] = {
-                "id": int(ligne.identifiant),
-                "total_occurrences": int(ligne.occurrences),
-                "document_frequency": int(
-                    ligne.document_frequency
-                )
+    def _construire_vocabulaire(
+        self,
+        mots_uniques: set[str]
+    ) -> dict[str, dict[str, int]]:
+        vocabulaire: dict[str, dict[str, int]] = {
+            mot: {
+                "id": identifiant,
+                "total_occurrences": 0,
+                "document_frequency": 0
             }
+            for identifiant, mot in enumerate(
+                sorted(mots_uniques)
+            )
+        }
         return vocabulaire
-    
-    def _construire_matrice_tf(self) -> csr_matrix:
-        documents = self.corpus.documents
+
+    def _construire_matrice_tf(
+        self,
+        compteurs_documents: list[Counter[str]]
+    ) -> csr_matrix:
         lignes: list[int] = []
         colonnes: list[int] = []
         valeurs: list[int] = []
-        for indice_ligne, document_id in enumerate(
-            self.document_ids
+        for indice_ligne, compteur in enumerate(
+            compteurs_documents
         ):
-            document = documents[document_id]
-            texte: str = nettoyer_texte(document.text)
-            mots: list[str] = texte.split()
-            occurrences: Counter[str] = Counter(mots)
-            for mot, tf in occurrences.items():
-                indice_colonne: int = self.vocab[mot]["id"]
+            for mot, tf in compteur.items():
+                indice_colonne = self.vocab[mot]["id"]
                 lignes.append(indice_ligne)
                 colonnes.append(indice_colonne)
                 valeurs.append(tf)
-        nombre_documents: int = len(self.document_ids)
-        nombre_mots: int = len(self.vocab)
-        mat_TF: csr_matrix = csr_matrix(
+        nombre_documents = len(self.document_ids)
+        nombre_mots = len(self.vocab)
+        return csr_matrix(
             (valeurs, (lignes, colonnes)),
             shape=(nombre_documents, nombre_mots),
             dtype=int
         )
-        return mat_TF
+
+    def _mettre_a_jour_statistiques(self) -> None:
+        tf_totaux = self.mat_TF.sum(axis=0).A1
+        df_totaux = (
+            (self.mat_TF > 0).sum(axis=0).A1
+        )
+        for mot, informations in self.vocab.items():
+            colonne = informations["id"]
+            informations["total_occurrences"] = int(
+                tf_totaux[colonne]
+            )
+            informations["document_frequency"] = int(
+                df_totaux[colonne]
+            )
