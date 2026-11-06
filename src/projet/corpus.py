@@ -6,6 +6,7 @@ from .author import Author
 from .document import ArxivDocument, Document, DocumentFactory, RedditDocument
 import re
 from .text_processing import nettoyer_texte
+from collections import Counter
 
 DATAFRAME_COLUMNS: list[str] = [
     "identifier",
@@ -287,3 +288,25 @@ class Corpus:
             for identifiant, mot in enumerate(mots_tries)
         }
         return vocabulaire
+    
+    def calculer_frequences(self) -> pd.DataFrame:
+        occurrences: Counter[str] = Counter()
+        for document in self.__documents.values():
+            texte: str = nettoyer_texte(document.text)
+            mots: list[str] = texte.split()
+            occurrences.update(mots)
+        freq: pd.DataFrame = pd.DataFrame(
+            [
+                {
+                    "mot": mot,
+                    "identifiant": identifiant,
+                    "occurrences": occurrences[mot]
+                }
+                for identifiant, mot in enumerate(
+                    sorted(occurrences)
+                )
+            ],
+            columns=["mot", "identifiant", "occurrences"]
+        )
+        return freq
+
