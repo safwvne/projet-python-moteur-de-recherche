@@ -3,6 +3,7 @@ import pytest
 from projet.corpus import Corpus
 from projet.document import RedditDocument
 from projet.search_engine import SearchEngine
+from scipy.sparse import isspmatrix_csr
 
 @pytest.fixture
 def corpus_vierge(monkeypatch):
@@ -197,3 +198,62 @@ def test_vocab_identifiants(corpus_vierge):
 def test_vocab_corpus_vide(corpus_vierge):
     moteur = SearchEngine(corpus_vierge)
     assert moteur.vocab == {}
+
+def test_matrice_tf_valeurs(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus treatment"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.document_ids == [1, 2, 3]
+    assert moteur.mat_TF.shape == (3, 4)
+    assert isspmatrix_csr(moteur.mat_TF)
+    assert moteur.mat_TF.toarray().tolist() == [
+        [1, 0, 0, 2],
+        [1, 0, 1, 0],
+        [0, 1, 0, 1]
+    ]
+
+def test_matrice_tf_repetitions(corpus_vierge):
+    document = ajouter_document(
+        corpus_vierge,
+        "COVID covid virus"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    colonne_covid = moteur.vocab["covid"]["id"]
+    colonne_virus = moteur.vocab["virus"]["id"]
+    assert moteur.mat_TF[0, colonne_covid] == 2
+    assert moteur.mat_TF[0, colonne_virus] == 1
+    assert document.text == "COVID covid virus"
+
+def test_matrice_tf_corpus_vide(corpus_vierge):
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.vocab == {}
+    assert moteur.document_ids == []
+    assert moteur.mat_TF.shape == (0, 0)
+    assert moteur.mat_TF.nnz == 0
+    ajouter_document(corpus_vierge, "")
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.mat_TF.shape == (1, 0)
+
+def test_matrice_tf_identifiants_documents(corpus_vierge):
+    ajouter_document(corpus_vierge, "a")
+    ajouter_document(corpus_vierge, "virus virus")
+    ajouter_document(corpus_vierge, "covid")
+    corpus_vierge.remove_short_documents(
+        minimum_length=3
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.document_ids == [2, 3]
+    assert moteur.mat_TF.toarray().tolist() == [
+        [0, 2],
+        [1, 0]
+    ]
