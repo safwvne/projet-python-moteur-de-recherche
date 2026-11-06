@@ -1,8 +1,5 @@
-
 import pytest
-
-from src.projet.text_processing import nettoyer_texte
-
+from projet.text_processing import nettoyer_texte
 
 @pytest.mark.parametrize(
     "texte, attendu",

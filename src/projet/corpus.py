@@ -274,3 +274,16 @@ class Corpus:
                 "contexte droit": right_context
             })
         return pd.DataFrame(results, columns=columns)
+    
+    def construire_vocabulaire(self) -> dict[str, int]:
+        mots_uniques: set[str] = set()
+        for document in self.__documents.values():
+            texte = nettoyer_texte(document.text)
+            mots = texte.split()
+            mots_uniques.update(mots)
+        mots_tries = sorted(mots_uniques)
+        vocabulaire = {
+            mot: identifiant
+            for identifiant, mot in enumerate(mots_tries)
+        }
+        return vocabulaire
