@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import pytest
 from projet.corpus import Corpus
 from projet.document import RedditDocument
+from projet.search_engine import SearchEngine
 
 @pytest.fixture
 def corpus_vierge(monkeypatch):
@@ -141,3 +142,58 @@ def test_document_frequency_coherence(corpus_vierge):
     assert (freq["document_frequency"] <= nombre_documents).all()
     assert (freq["document_frequency"] <= freq["occurrences"]).all()
     assert len(freq) == len(corpus_vierge.construire_vocabulaire())
+    
+def test_vocab_structure(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus treatment"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.vocab == {
+        "covid": {
+            "id": 0,
+            "total_occurrences": 2,
+            "document_frequency": 2
+        },
+        "treatment": {
+            "id": 1,
+            "total_occurrences": 1,
+            "document_frequency": 1
+        },
+        "vaccine": {
+            "id": 2,
+            "total_occurrences": 1,
+            "document_frequency": 1
+        },
+        "virus": {
+            "id": 3,
+            "total_occurrences": 3,
+            "document_frequency": 2
+        }
+    }
+
+def test_vocab_identifiants(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "Virus COVID vaccine"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    identifiants = {
+        mot: infos["id"]
+        for mot, infos in moteur.vocab.items()
+    }
+    assert identifiants == (
+        corpus_vierge.construire_vocabulaire()
+    )
+
+def test_vocab_corpus_vide(corpus_vierge):
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.vocab == {}
