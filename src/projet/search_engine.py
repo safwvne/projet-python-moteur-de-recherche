@@ -3,6 +3,7 @@ from collections import Counter
 from scipy.sparse import csr_matrix
 from .corpus import Corpus
 from .text_processing import nettoyer_texte
+from math import log
 
 class SearchEngine:
     def __init__(self, corpus: Corpus) -> None:
@@ -27,6 +28,9 @@ class SearchEngine:
             )
         )
         self._mettre_a_jour_statistiques()
+        self.mat_TFxIDF: csr_matrix = (
+            self._construire_matrice_tfidf()
+        )
 
     def _construire_vocabulaire(
         self,
@@ -80,3 +84,25 @@ class SearchEngine:
             informations["document_frequency"] = int(
                 df_totaux[colonne]
             )
+                  
+    def _construire_matrice_tfidf(self) -> csr_matrix:
+        nombre_documents, nombre_mots = self.mat_TF.shape
+        self.idf: list[float] = [0.0] * nombre_mots
+        for informations in self.vocab.values():
+            colonne: int = informations["id"]
+            df: int = informations[
+                "document_frequency"
+            ]
+            poids_idf: float = log(
+                (nombre_documents + 1) / (df + 1)
+            ) + 1
+            self.idf[colonne] = poids_idf
+        if nombre_mots == 0:
+            return csr_matrix(
+                (nombre_documents, 0),
+                dtype=float
+            )
+        mat_TFxIDF: csr_matrix = (
+            self.mat_TF.multiply(self.idf).tocsr()
+        )
+        return mat_TFxIDF

@@ -4,6 +4,7 @@ from projet.corpus import Corpus
 from projet.document import RedditDocument
 from projet.search_engine import SearchEngine
 from scipy.sparse import isspmatrix_csr
+from math import log
 
 @pytest.fixture
 def corpus_vierge(monkeypatch):
@@ -339,3 +340,87 @@ def test_optimisation_un_nettoyage_par_document(corpus_vierge, monkeypatch):
     assert len(appels) == 2
     assert moteur.mat_TF.shape == (2, 3)
     assert moteur.vocab["virus"]["document_frequency"] == 2
+    
+
+def test_matrice_tfidf_valeurs(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "covid virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus treatment"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    idf_commun = log(4 / 3) + 1
+    idf_rare = log(4 / 2) + 1
+    assert moteur.mat_TFxIDF.shape == (3, 4)
+    assert isspmatrix_csr(moteur.mat_TFxIDF)
+    assert moteur.idf == pytest.approx([
+        idf_commun,
+        idf_rare,
+        idf_rare,
+        idf_commun
+    ])
+    attendu = [
+        [idf_commun, 0, 0, 2 * idf_commun],
+        [idf_commun, 0, idf_rare, 0],
+        [0, idf_rare, 0, idf_commun]
+    ]
+    for ligne, valeurs in enumerate(attendu):
+        for colonne, valeur in enumerate(valeurs):
+            assert moteur.mat_TFxIDF[
+                ligne, colonne
+            ] == pytest.approx(valeur)
+
+def test_matrice_tf_non_modifiee(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.mat_TF.toarray().tolist() == [
+        [0, 2],
+        [1, 0]
+    ]
+    assert moteur.mat_TF.dtype.kind in ("i", "u")
+    assert moteur.mat_TFxIDF.dtype.kind == "f"
+    assert moteur.mat_TFxIDF.shape == moteur.mat_TF.shape
+    assert moteur.mat_TFxIDF.nnz == moteur.mat_TF.nnz
+
+def test_tfidf_mot_present_dans_tous_documents(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "virus virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "virus"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.idf[0] == pytest.approx(1.0)
+    assert moteur.mat_TFxIDF.toarray().tolist() == [
+        [2.0],
+        [1.0]
+    ]
+
+def test_matrice_tfidf_corpus_vide(corpus_vierge):
+    moteur = SearchEngine(corpus_vierge)
+
+    assert moteur.mat_TFxIDF.shape == (0, 0)
+    assert moteur.mat_TFxIDF.nnz == 0
+    assert isspmatrix_csr(moteur.mat_TFxIDF)
+    assert moteur.idf == []
+    ajouter_document(corpus_vierge, "")
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.mat_TFxIDF.shape == (1, 0)
+    assert moteur.mat_TFxIDF.nnz == 0
+    assert moteur.idf == []
