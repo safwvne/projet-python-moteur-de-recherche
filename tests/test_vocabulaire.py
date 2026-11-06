@@ -4,7 +4,7 @@ from projet.corpus import Corpus
 from projet.document import RedditDocument
 from projet.search_engine import SearchEngine
 from scipy.sparse import isspmatrix_csr
-from math import log
+from math import log, sqrt
 
 @pytest.fixture
 def corpus_vierge(monkeypatch):
@@ -424,3 +424,101 @@ def test_matrice_tfidf_corpus_vide(corpus_vierge):
     assert moteur.mat_TFxIDF.shape == (1, 0)
     assert moteur.mat_TFxIDF.nnz == 0
     assert moteur.idf == []
+    
+
+def test_vectorisation_requete(corpus_vierge):
+    ajouter_document(
+        corpus_vierge,
+        "virus vaccine"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "covid virus"
+    )
+    moteur = SearchEngine(corpus_vierge)
+    vecteur = moteur._vectoriser_requete(
+        "VIRUS virus!!! vaccine inconnu"
+    )
+    assert isspmatrix_csr(vecteur)
+    assert vecteur.shape == (1, len(moteur.vocab))
+    colonne_virus = moteur.vocab["virus"]["id"]
+    colonne_vaccine = moteur.vocab["vaccine"]["id"]
+    assert vecteur[0, colonne_virus] == pytest.approx(
+        2 * moteur.idf[colonne_virus]
+    )
+    assert vecteur[0, colonne_vaccine] == pytest.approx(
+        moteur.idf[colonne_vaccine]
+    )
+    assert "inconnu" not in moteur.vocab
+    assert vecteur.nnz == 2
+
+def test_similarite_cosinus_et_classement(corpus_vierge):
+    ajouter_document(corpus_vierge, "virus virus")
+    ajouter_document(corpus_vierge, "virus vaccine")
+    ajouter_document(corpus_vierge, "vaccine")
+    moteur = SearchEngine(corpus_vierge)
+    scores = moteur._calculer_similarites(
+        moteur._vectoriser_requete("virus")
+    )
+    assert scores[0] == pytest.approx(1.0)
+    assert scores[1] == pytest.approx(1 / sqrt(2))
+    assert scores[2] == pytest.approx(0.0)
+    resultats = moteur.search("virus", n=5)
+    assert resultats["document_id"].tolist() == [1, 2]
+    assert resultats.iloc[0]["score"] == pytest.approx(1.0)
+    assert resultats.iloc[1]["score"] == pytest.approx(
+        1 / sqrt(2)
+    )
+
+def test_recherche_plusieurs_mots(corpus_vierge):
+    ajouter_document(corpus_vierge, "virus virus")
+    ajouter_document(corpus_vierge, "virus vaccine")
+    ajouter_document(corpus_vierge, "vaccine")
+    moteur = SearchEngine(corpus_vierge)
+    resultats = moteur.search(
+        "VIRUS, VACCINE!",
+        n=3
+    )
+    assert resultats.iloc[0]["document_id"] == 2
+    assert resultats.iloc[0]["score"] == pytest.approx(1.0)
+    assert resultats["score"].is_monotonic_decreasing
+
+
+def test_recherche_vide_et_mots_inconnus(corpus_vierge):
+    ajouter_document(corpus_vierge, "covid vaccine")
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.search("").empty
+    assert moteur.search("   !!!   ").empty
+    assert moteur.search("zzzxxyy999").empty
+    assert moteur.search("covid", n=0).empty
+    with pytest.raises(ValueError):
+        moteur.search("covid", n=-1)
+    assert list(moteur.search("").columns) == [
+        "document_id",
+        "title",
+        "author",
+        "source",
+        "score",
+        "url"
+    ]
+
+def test_recherche_corpus_vide(corpus_vierge):
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.search("virus").empty
+    assert moteur.normes_documents == []
+    ajouter_document(corpus_vierge, "")
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.search("virus").empty
+    assert moteur.normes_documents == [0.0]
+
+def test_recherche_identifiants_et_egalites(corpus_vierge):
+    ajouter_document(corpus_vierge, "x")
+    ajouter_document(corpus_vierge, "virus")
+    ajouter_document(corpus_vierge, "virus")
+    corpus_vierge.remove_short_documents(
+        minimum_length=2
+    )
+    moteur = SearchEngine(corpus_vierge)
+    assert moteur.document_ids == [2, 3]
+    resultats = moteur.search("virus", n=10)
+    assert resultats["document_id"].tolist() == [2, 3]

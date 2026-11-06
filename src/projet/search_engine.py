@@ -3,7 +3,8 @@ from collections import Counter
 from scipy.sparse import csr_matrix
 from .corpus import Corpus
 from .text_processing import nettoyer_texte
-from math import log
+from math import log, sqrt
+import pandas as pd
 
 class SearchEngine:
     def __init__(self, corpus: Corpus) -> None:
@@ -31,6 +32,15 @@ class SearchEngine:
         self.mat_TFxIDF: csr_matrix = (
             self._construire_matrice_tfidf()
         )
+        self.normes_documents: list[float] = [
+            sqrt(float(total))
+            for total in (
+                self.mat_TFxIDF
+                .multiply(self.mat_TFxIDF)
+                .sum(axis=1)
+                .A1
+            )
+        ]
 
     def _construire_vocabulaire(
         self,
@@ -106,3 +116,99 @@ class SearchEngine:
             self.mat_TF.multiply(self.idf).tocsr()
         )
         return mat_TFxIDF
+    
+    def _vectoriser_requete(self, mots_cles: str) -> csr_matrix:
+        texte: str = nettoyer_texte(mots_cles)
+        mots: list[str] = texte.split()
+        occurrences: Counter[str] = Counter(mots)
+        colonnes: list[int] = []
+        valeurs: list[float] = []
+        for mot, frequence in occurrences.items():
+            if mot not in self.vocab:
+                continue
+            colonne: int = self.vocab[mot]["id"]
+            poids: float = frequence * self.idf[colonne]
+            colonnes.append(colonne)
+            valeurs.append(poids)
+        lignes: list[int] = [0] * len(colonnes)
+        return csr_matrix(
+            (valeurs, (lignes, colonnes)),
+            shape=(1, len(self.vocab)),
+            dtype=float
+        )
+    
+    def _calculer_similarites(self, vecteur_requete: csr_matrix) -> list[float]:
+        norme_requete: float = sqrt(
+            float(
+                vecteur_requete
+                .multiply(vecteur_requete)
+                .sum()
+            )
+        )
+        if norme_requete == 0:
+            return [0.0] * len(self.document_ids)
+        produits_scalaires = (
+            self.mat_TFxIDF @ vecteur_requete.T
+        ).toarray().ravel()
+        scores: list[float] = []
+        for indice_ligne, produit in enumerate(
+            produits_scalaires
+        ):
+            norme_document = self.normes_documents[
+                indice_ligne
+            ]
+            if norme_document == 0:
+                scores.append(0.0)
+                continue
+            score = float(produit) / (
+                norme_document * norme_requete
+            )
+            scores.append(score)
+        return scores
+    
+    def search(self, mots_cles: str, n: int = 5) -> pd.DataFrame:
+        colonnes = [
+            "document_id",
+            "title",
+            "author",
+            "source",
+            "score",
+            "url"
+        ]
+        if n < 0:
+            raise ValueError(
+                "Le nombre de résultats ne peut pas être négatif."
+            )
+        if n == 0:
+            return pd.DataFrame(columns=colonnes)
+        vecteur_requete = self._vectoriser_requete(
+            mots_cles
+        )
+        scores = self._calculer_similarites(
+            vecteur_requete
+        )
+        classement = [
+            (score, self.document_ids[indice])
+            for indice, score in enumerate(scores)
+            if score > 0.0
+        ]
+        classement.sort(
+            key=lambda element: (-element[0], element[1])
+        )
+        meilleurs = classement[:n]
+        documents = self.corpus.documents
+        resultats: list[dict[str, object]] = []
+        for score, document_id in meilleurs:
+            document = documents[document_id]
+            resultats.append({
+                "document_id": document_id,
+                "title": document.title,
+                "author": document.author,
+                "source": document.document_type,
+                "score": float(score),
+                "url": document.url
+            })
+        return pd.DataFrame(
+            resultats,
+            columns=colonnes
+        )
