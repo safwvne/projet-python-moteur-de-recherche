@@ -5,6 +5,7 @@ import pandas as pd
 from .author import Author
 from .document import ArxivDocument, Document, DocumentFactory, RedditDocument
 import re
+from .text_processing import nettoyer_texte
 
 DATAFRAME_COLUMNS: list[str] = [
     "identifier",
