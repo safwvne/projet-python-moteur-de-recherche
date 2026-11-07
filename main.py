@@ -13,14 +13,15 @@ import praw
 from prawcore.exceptions import PrawcoreException
 import xmltodict
 
-from src.projet.author import Author
-from src.projet.corpus import Corpus
-from src.projet.document import (
+from projet.author import Author
+from projet.corpus import Corpus
+from projet.document import (
     ARXIV_TYPE,
     REDDIT_TYPE,
     Document,
     DocumentFactory,
 )
+from projet.search_engine import SearchEngine
 
 CORPUS_NAME: str = "Coronavirus"
 CORPUS_FILE_PATH: Path = Path("data") / "corpus.csv"
@@ -181,26 +182,96 @@ def display_author_statistics(corpus: Corpus) -> None:
         print(f"Author '{author_name}' was not found.")
 
 
+def run_search_interface(moteur: SearchEngine) -> None:
+    print("\n" + "=" * 45)
+    print("           MOTEUR DE RECHERCHE")
+    print("=" * 45)
+    print(f"Documents : {len(moteur.document_ids)}")
+    print(f"Mots distincts : {len(moteur.vocab)}")
+    print("\nTapez 'q' pour quitter.")
+    while True:
+        try:
+            mots_cles = input(
+                "\nMots-clés (q pour quitter) : "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nFermeture du moteur de recherche.")
+            break
+        if mots_cles.lower() in ("q", "quit", "exit"):
+            print("Au revoir !")
+            break
+        if not mots_cles:
+            print("Veuillez saisir au moins un mot-clé.")
+            continue
+        try:
+            saisie = input(
+                "Nombre de résultats [5] : "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nFermeture du moteur de recherche.")
+            break
+        try:
+            nombre_resultats = (
+                int(saisie) if saisie else 5
+            )
+        except ValueError:
+            print("Veuillez saisir un nombre entier valide.")
+            continue
+        if nombre_resultats <= 0:
+            print("Le nombre doit être supérieur à zéro.")
+            continue
+        resultats = moteur.search(
+            mots_cles=mots_cles,
+            n=nombre_resultats
+        )
+        if resultats.empty:
+            print("Aucun document pertinent trouvé.")
+            continue
+        print(
+            f"\n{len(resultats)} document(s) trouvé(s) :\n"
+        )
+        print(
+            resultats.to_string(
+                index=False,
+                formatters={
+                    "score": lambda valeur: f"{valeur:.4f}"
+                }
+            )
+        )
+
 def run_project() -> None:
     corpus: Corpus = Corpus.get_instance(CORPUS_NAME)
     if CORPUS_FILE_PATH.is_file():
         corpus.load(CORPUS_FILE_PATH)
-        print(f"Corpus loaded from {CORPUS_FILE_PATH}")
+        print(f"Corpus chargé depuis {CORPUS_FILE_PATH}")
     else:
         build_corpus_from_apis(corpus)
         display_document_statistics(corpus)
         removed_count: int = corpus.remove_short_documents(
             MINIMUM_DOCUMENT_LENGTH
         )
-        print(f"Documents shorter than 100 characters removed: {removed_count}")
+        print(f"Documents de moins de {MINIMUM_DOCUMENT_LENGTH} caractères supprimés : {removed_count}")
         corpus.save(CORPUS_FILE_PATH)
-        print(f"Corpus saved to {CORPUS_FILE_PATH}")
+        print(f"Corpus sauvegardé dans {CORPUS_FILE_PATH}")
     print(f"\n{corpus!r}")
     corpus_text: str = corpus.get_concatenated_text()
-    print(f"Concatenated text length: {len(corpus_text)} characters")
+    print(
+        f"Longueur du texte concaténé : "
+        f"{len(corpus_text)} caractères"
+    )
     display_sorted_documents(corpus)
-    display_author_statistics(corpus)
-
+    if corpus.get_document_count() == 0:
+        print("Le corpus ne contient aucun document.")
+        return
+    print("\nConstruction du moteur de recherche...")
+    moteur: SearchEngine = SearchEngine(corpus)
+    print("Indexation terminée.")
+    print(f"Matrice TF : {moteur.mat_TF.shape}")
+    print(
+        f"Matrice TF-IDF : "
+        f"{moteur.mat_TFxIDF.shape}"
+    )
+    run_search_interface(moteur)
 
 def main() -> None:
     try:
