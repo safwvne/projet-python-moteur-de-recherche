@@ -8,9 +8,11 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "ipywidgets>=8.1.9",
     "pandas>=3.0.0",
     "praw>=8.0.3",
     "scipy>=1.17.1",
+    "tqdm>=4.70.1",
     "xmltodict>=1.0.4",
 ]
 
@@ -23,5 +25,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.6",
     "pytest>=9.2.0",
 ]

@@ -5,15 +5,21 @@ from .corpus import Corpus
 from .text_processing import nettoyer_texte
 from math import log, sqrt
 import pandas as pd
+from tqdm.auto import tqdm
 
 class SearchEngine:
-    def __init__(self, corpus: Corpus) -> None:
+    def __init__(self, corpus: Corpus, show_progress: bool = False) -> None:
         self.corpus: Corpus = corpus
         documents = self.corpus.documents
         self.document_ids: list[int] = sorted(documents)
         compteurs_documents: list[Counter[str]] = []
         mots_uniques: set[str] = set()
-        for document_id in self.document_ids:
+        for document_id in tqdm(
+            self.document_ids,
+            desc="Préparation de l'index",
+            unit="document",
+            disable=not show_progress
+        ):
             document = documents[document_id]
             texte = nettoyer_texte(document.text)
             mots = texte.split()
