@@ -522,3 +522,38 @@ def test_recherche_identifiants_et_egalites(corpus_vierge):
     assert moteur.document_ids == [2, 3]
     resultats = moteur.search("virus", n=10)
     assert resultats["document_id"].tolist() == [2, 3]
+    
+def test_progression_indexation_optionnelle(corpus_vierge, monkeypatch):
+    import projet.search_engine as module_moteur
+    ajouter_document(
+        corpus_vierge,
+        "covid virus"
+    )
+    ajouter_document(
+        corpus_vierge,
+        "vaccine virus"
+    )
+    modes_progression = []
+    def faux_tqdm(iterable, **kwargs):
+        modes_progression.append(
+            kwargs["disable"]
+        )
+        return iterable
+    monkeypatch.setattr(
+        module_moteur,
+        "tqdm",
+        faux_tqdm
+    )
+    moteur_sans = SearchEngine(corpus_vierge)
+    moteur_avec = SearchEngine(
+        corpus_vierge,
+        show_progress=True
+    )
+    assert modes_progression == [True, False]
+    difference = (
+        moteur_sans.mat_TF != moteur_avec.mat_TF
+    )
+    assert difference.nnz == 0
+    resultat_sans = moteur_sans.search("virus")
+    resultat_avec = moteur_avec.search("virus")
+    assert resultat_sans.equals(resultat_avec)
