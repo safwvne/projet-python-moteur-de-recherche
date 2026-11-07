@@ -1,12 +1,12 @@
 from __future__ import annotations
-
 import json
 from pathlib import Path
-
 import pandas as pd
-
 from .author import Author
 from .document import ArxivDocument, Document, DocumentFactory, RedditDocument
+import re
+from .text_processing import nettoyer_texte
+from collections import Counter
 
 DATAFRAME_COLUMNS: list[str] = [
     "identifier",
@@ -38,6 +38,7 @@ class Corpus:
         self.__documents: dict[int, Document] = {}
         self.__document_id: int = 0
         self.__authors: dict[str, Author] = {}
+        self.__concatenated_text_cache: str | None = None
 
     @classmethod
     def get_instance(cls, name: str = "Search corpus") -> Corpus:
@@ -66,6 +67,7 @@ class Corpus:
         document_id: int = self.__document_id
         self.__documents[document_id] = document
         self.__add_document_to_authors(document_id, document)
+        self.__concatenated_text_cache = None
         return document_id
 
     def get_document_count(self) -> int:
@@ -92,12 +94,16 @@ class Corpus:
         ]
         for document_id in identifiers:
             del self.__documents[document_id]
+        self.__concatenated_text_cache = None
         self.__rebuild_authors()
         return len(identifiers)
 
     def get_concatenated_text(self) -> str:
-        texts: list[str] = [document.text for document in self.__documents.values()]
-        return " ".join(texts)
+        if self.__concatenated_text_cache is None:
+            self.__concatenated_text_cache = " ".join(
+                doc.text for doc in self.__documents.values()
+            )
+        return self.__concatenated_text_cache
 
     def get_documents_by_date(self, count: int) -> list[Document]:
         if count < 0:
@@ -140,6 +146,7 @@ class Corpus:
         self.__documents = {}
         self.__authors = {}
         self.__document_id = 0
+        self.__concatenated_text_cache = None
         for _, row in dataframe.iterrows():
             document: Document = self.__create_document_from_row(row)
             document_id: int = int(row["identifier"])
@@ -216,3 +223,97 @@ class Corpus:
             f"Corpus(name={self.name!r}, documents={len(self.__documents)}, "
             f"authors={len(self.__authors)})"
         )
+
+    def search(self, keyword: str, context_size: int = 60) -> list[str]:
+        keyword = keyword.strip()
+        if not keyword:
+            return []
+        text = self.get_concatenated_text()
+        pattern = rf"\b{re.escape(keyword)}\b"
+        return [
+            text[ max(0, match.start() - context_size): match.end() + context_size]
+            for match in re.finditer(
+                pattern,
+                text,
+                flags=re.IGNORECASE
+            )
+        ]
+
+
+    def concorde(self, expression: str, context_size: int = 30) -> pd.DataFrame:
+        columns: list[str] = [
+            "contexte gauche",
+            "motif trouvé",
+            "contexte droit"
+        ]
+        if context_size < 0:
+            raise ValueError(
+                "La taille du contexte ne peut pas être négative."
+            )
+        expression = expression.strip()
+        if not expression:
+            return pd.DataFrame(columns=columns)
+        text: str = self.get_concatenated_text()
+        pattern: str = rf"(?<!\w){re.escape(expression)}(?!\w)"
+        results: list[dict[str, str]] = []
+        for match in re.finditer(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        ):
+            start: int = match.start()
+            end: int = match.end()
+            left_context: str = text[
+                max(0, start - context_size):start
+            ]
+            right_context: str = text[
+                end:min(len(text), end + context_size)
+            ]
+            results.append({
+                "contexte gauche": left_context,
+                "motif trouvé": match.group(0),
+                "contexte droit": right_context
+            })
+        return pd.DataFrame(results, columns=columns)
+    
+    def construire_vocabulaire(self) -> dict[str, int]:
+        mots_uniques: set[str] = set()
+        for document in self.__documents.values():
+            texte = nettoyer_texte(document.text)
+            mots = texte.split()
+            mots_uniques.update(mots)
+        mots_tries = sorted(mots_uniques)
+        vocabulaire = {
+            mot: identifiant
+            for identifiant, mot in enumerate(mots_tries)
+        }
+        return vocabulaire
+    
+    def calculer_frequences(self) -> pd.DataFrame:
+        occurrences: Counter[str] = Counter()
+        document_frequency: Counter[str] = Counter()
+        for document in self.__documents.values():
+            texte: str = nettoyer_texte(document.text)
+            mots: list[str] = texte.split()
+            occurrences.update(mots)
+            document_frequency.update(set(mots))
+        freq: pd.DataFrame = pd.DataFrame(
+            [
+                {
+                    "mot": mot,
+                    "identifiant": identifiant,
+                    "occurrences": occurrences[mot],
+                    "document_frequency": document_frequency[mot]
+                }
+                for identifiant, mot in enumerate(
+                    sorted(occurrences)
+                )
+            ],
+            columns=[
+                "mot",
+                "identifiant",
+                "occurrences",
+                "document_frequency"
+            ]
+        )
+        return freq
