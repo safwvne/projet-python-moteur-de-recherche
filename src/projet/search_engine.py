@@ -171,8 +171,8 @@ class SearchEngine:
             )
             scores.append(score)
         return scores
-    
-    def search(self, mots_cles: str, n: int = 5) -> pd.DataFrame:
+     
+    def search(self, mots_cles: str, n: int = 5, source: str | None = None) -> pd.DataFrame:
         colonnes = [
             "document_id",
             "title",
@@ -185,6 +185,10 @@ class SearchEngine:
             raise ValueError(
                 "Le nombre de résultats ne peut pas être négatif."
             )
+        if source not in (None, "reddit", "arxiv"):
+            raise ValueError(
+                "Source invalide : utiliser reddit, arxiv ou None."
+            )
         if n == 0:
             return pd.DataFrame(columns=colonnes)
         vecteur_requete = self._vectoriser_requete(
@@ -193,16 +197,26 @@ class SearchEngine:
         scores = self._calculer_similarites(
             vecteur_requete
         )
-        classement = [
-            (score, self.document_ids[indice])
-            for indice, score in enumerate(scores)
-            if score > 0.0
-        ]
+        documents = self.corpus.documents
+        classement: list[tuple[float, int]] = []
+        for indice, score in enumerate(scores):
+
+            if score <= 0:
+                continue
+            document_id = self.document_ids[indice]
+            document = documents[document_id]
+            if (
+                source is not None
+                and document.document_type != source
+            ):
+                continue
+            classement.append(
+                (float(score), document_id)
+            )
         classement.sort(
             key=lambda element: (-element[0], element[1])
         )
         meilleurs = classement[:n]
-        documents = self.corpus.documents
         resultats: list[dict[str, object]] = []
         for score, document_id in meilleurs:
             document = documents[document_id]
@@ -211,7 +225,7 @@ class SearchEngine:
                 "title": document.title,
                 "author": document.author,
                 "source": document.document_type,
-                "score": float(score),
+                "score": score,
                 "url": document.url
             })
         return pd.DataFrame(
