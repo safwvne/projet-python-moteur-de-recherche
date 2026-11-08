@@ -9,14 +9,6 @@ Ce projet consiste à développer un moteur de recherche documentaire en Python,
 
 Le programme permet de récupérer et sauvegarder les documents, de les organiser en objets Python, d'analyser leur contenu textuel et de retrouver les documents les plus pertinents à partir de mots-clés à l'aide de la pondération **TF-IDF** et de la **similarité cosinus**.
 
-Le projet comporte trois étapes de développement :
-
-- **v1 — Corpus et programmation orientée objet :** acquisition des données, classes `Document`, `RedditDocument`, `ArxivDocument`, `Author` et `Corpus`, sauvegarde et rechargement du corpus.
-- **v2 — Moteur de recherche :** prétraitement, vocabulaire, statistiques lexicales, matrices TF et TF-IDF, vectorisation des requêtes, classement et interface en terminal.
-- **v3 — Interface graphique et extensions :** notebook Jupyter avec `ipywidgets`, barre de progression `tqdm`, filtre par source (bonus 1) et concordancier interactif (bonus 8).
-
-Les mentions *v1*, *v2* et *v3* désignent ici les étapes fonctionnelles du projet. Leur publication sous forme de **tags Git** doit être vérifiée séparément.
-
 ## Technologies et dépendances
 
 - **Python 3.13 :** version utilisée lors du développement et prévue pour l'évaluation. Le fichier `pyproject.toml` indique `requires-python = ">=3.11"`.
